@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Notion Table Sync</title>
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; padding: 12px; margin: 0; }
+    label { display: block; margin-bottom: 4px; font-size: 11px; color: #333; }
+    input[type="text"] { width: 100%; padding: 6px; margin-bottom: 8px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+    .btn { padding: 8px 16px; background: #0d99ff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .btn:hover { background: #0b85e0; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+  </style>
+</head>
+<body>
+  <div id="configurePanel" class="panel active">
+    <label>Proxy URL (e.g. https://xxx.workers.dev)</label>
+    <input type="text" id="proxyUrl" placeholder="https://your-proxy.workers.dev">
+    <label>Notion Database ID</label>
+    <input type="text" id="databaseId" placeholder="32-char ID from database URL">
+    <button id="saveConfig" class="btn">Save</button>
+  </div>
+  <div id="editCellPanel" class="panel">
+    <label id="editCellLabel">Value</label>
+    <input type="text" id="cellValue" placeholder="">
+    <button id="saveCell" class="btn">Save</button>
+  </div>
+  <script>
+    (function() {
+      var configurePanel = document.getElementById('configurePanel');
+      var editCellPanel = document.getElementById('editCellPanel');
+      var proxyUrlEl = document.getElementById('proxyUrl');
+      var databaseIdEl = document.getElementById('databaseId');
+      var cellValueEl = document.getElementById('cellValue');
+
+      window.onmessage = function(event) {
+        var msg = event.data;
+        if (!msg || !msg.type) return;
+        if (msg.type === 'init') {
+          proxyUrlEl.value = msg.proxyUrl || '';
+          databaseIdEl.value = msg.databaseId || '';
+          configurePanel.classList.add('active');
+          editCellPanel.classList.remove('active');
+        } else if (msg.type === 'editCell') {
+          cellValueEl.value = msg.value || '';
+          cellValueEl.dataset.pageId = msg.pageId || '';
+          cellValueEl.dataset.property = msg.property || '';
+          cellValueEl.dataset.columnType = msg.columnType || '';
+          editCellPanel.classList.add('active');
+          configurePanel.classList.remove('active');
+        }
+      };
+
+      document.getElementById('saveConfig').onclick = function() {
+        parent.postMessage({
+          pluginMessage: {
+            type: 'configure',
+            proxyUrl: proxyUrlEl.value.trim(),
+            databaseId: databaseIdEl.value.trim()
+          }
+        }, '*');
+      };
+
+      document.getElementById('saveCell').onclick = function() {
+        parent.postMessage({
+          pluginMessage: {
+            type: 'updateCell',
+            pageId: cellValueEl.dataset.pageId,
+            property: cellValueEl.dataset.property,
+            columnType: cellValueEl.dataset.columnType || 'rich_text',
+            value: cellValueEl.value
+          }
+        }, '*');
+      };
+    })();
+  </script>
+</body>
+</html>

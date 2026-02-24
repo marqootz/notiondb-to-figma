@@ -1,0 +1,14 @@
+{
+  "name": "Notion Table Sync",
+  "id": "notion-table-sync-widget",
+  "api": "1.0.0",
+  "widgetApi": "1.0.0",
+  "editorType": ["figma"],
+  "containsWidget": true,
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "networkAccess": {
+    "allowedDomains": ["https://your-proxy.workers.dev"],
+    "reasoning": "Fetches and updates Notion database via CORS proxy. Replace with your deployed proxy domain."
+  }
+}

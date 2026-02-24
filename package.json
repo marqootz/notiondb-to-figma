@@ -1,0 +1,15 @@
+{
+  "name": "notion-table-widget",
+  "version": "1.0.0",
+  "description": "Figma widget that syncs a Notion database as an interactive table",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.90.0",
+    "@figma/widget-typings": "^1.9.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.0.0"
+  }
+}

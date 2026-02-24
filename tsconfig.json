@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "jsx": "react",
+    "jsxFactory": "figma.widget.h",
+    "jsxFragmentFactory": "figma.widget.Fragment",
+    "target": "ES6",
+    "lib": ["ES2017"],
+    "strict": true,
+    "skipLibCheck": true,
+    "module": "commonjs",
+    "outDir": "dist",
+    "rootDir": "widget-src",
+    "typeRoots": ["./node_modules/@types", "./node_modules/@figma"]
+  },
+  "include": ["widget-src/**/*"]
+}
