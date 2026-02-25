@@ -23,11 +23,14 @@ export interface NotionPropertyValue {
   formula?: { type: string; string?: string; number?: number; boolean?: boolean };
   rollup?: { type: string; array?: unknown[]; number?: number; date?: unknown };
   status?: { name: string } | null;
+  people?: Array<{ id?: string; name?: string }>;
 }
 
 export interface NotionPage {
   id: string;
   properties: Record<string, NotionPropertyValue>;
+  created_time?: string;
+  last_edited_time?: string;
 }
 
 export interface NotionDatabaseQueryResponse {
@@ -37,13 +40,34 @@ export interface NotionDatabaseQueryResponse {
   has_more: boolean;
 }
 
+export interface NotionDatabaseResponse {
+  object: string;
+  id: string;
+  properties: Record<
+    string,
+    {
+      type?: string;
+      select?: { options?: { name: string; color?: string }[] };
+      status?: { options?: { name: string; color?: string }[] };
+    }
+  >;
+}
+
+export interface SelectOption {
+  name: string;
+  color?: string;
+}
+
 export interface ColumnDef {
   name: string;
   propertyName: string;
   type: string;
+  options?: SelectOption[];
 }
 
 export interface RowData {
   pageId: string;
   cells: Record<string, string>;
+  created_time?: string;
+  last_edited_time?: string;
 }

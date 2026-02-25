@@ -2,11 +2,72 @@
  * Flatten Notion property values to display strings for the table.
  * Write-back builds the correct Notion API payload per type.
  */
+
+/** Human-readable label for Notion property types. */
+export const NOTION_TYPE_LABELS: Record<string, string> = {
+  title: "Title",
+  rich_text: "Text",
+  number: "Number",
+  select: "Select",
+  multi_select: "Multi",
+  checkbox: "Check",
+  date: "Date",
+  url: "URL",
+  status: "Status",
+  formula: "Formula",
+  rollup: "Rollup",
+  people: "People",
+};
+
+/** Format cell value for display with type-specific representation. */
+export function formatCellForDisplay(type: string, value: string): string {
+  if (!value) return "—";
+  switch (type) {
+    case "checkbox":
+      return /^(1|true|yes)$/i.test(value.trim()) ? "✓" : "—";
+    case "date":
+      try {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString();
+      } catch {
+        /* fall through */
+      }
+      return value;
+    case "number":
+      const n = parseFloat(value);
+      return isNaN(n) ? value : n.toLocaleString();
+    case "url":
+      return value; // Could truncate long URLs
+    default:
+      return value;
+  }
+}
+
+/** Whether the property type is read-only (formula, rollup, people). */
+export function isReadOnlyType(type: string): boolean {
+  return type === "formula" || type === "rollup" || type === "people";
+}
+
+/** Notion color names to hex for pill styling. */
+export const NOTION_PILL_COLORS: Record<string, { bg: string; text: string }> = {
+  default: { bg: "#F3F4F6", text: "#374151" },
+  gray: { bg: "#E5E7EB", text: "#374151" },
+  brown: { bg: "#E7D5C4", text: "#5C4033" },
+  orange: { bg: "#FFE4CC", text: "#C2410C" },
+  yellow: { bg: "#FEF3C7", text: "#92400E" },
+  green: { bg: "#D1FAE5", text: "#065F46" },
+  blue: { bg: "#DBEAFE", text: "#1E40AF" },
+  purple: { bg: "#EDE9FE", text: "#5B21B6" },
+  pink: { bg: "#FCE7F3", text: "#9D174D" },
+  red: { bg: "#FEE2E2", text: "#991B1B" },
+};
 import type {
   NotionPage,
   NotionPropertyValue,
   NotionRichTextItem,
   ColumnDef,
+  SelectOption,
+  NotionDatabaseResponse,
 } from "./notion-types";
 
 function richTextToStr(richText: NotionRichTextItem[] | undefined): string {
@@ -36,6 +97,27 @@ export function parseNotionColumns(results: NotionPage[]): ColumnDef[] {
     }
   }
   return columns;
+}
+
+/** Merge select/status options from database schema into columns. */
+export function mergeSchemaOptions(
+  columns: ColumnDef[],
+  schema: NotionDatabaseResponse | null
+): ColumnDef[] {
+  if (!schema?.properties) return columns;
+  return columns.map((col) => {
+    const prop = schema.properties[col.propertyName];
+    if (!prop) return col;
+    const opts =
+      (col.type === "select" && prop.select?.options) ??
+      (col.type === "status" && prop.status?.options);
+    if (!opts?.length) return col;
+    const options: SelectOption[] = opts.map((o) => ({
+      name: o.name,
+      color: o.color ?? "default",
+    }));
+    return { ...col, options };
+  });
 }
 
 export function parseNotionProperties(
@@ -78,6 +160,12 @@ export function parseNotionProperties(
       case "status":
         cells[key] =
           v.status != null && v.status.name != null ? v.status.name : "";
+        break;
+      case "people":
+        cells[key] = (v.people != null ? v.people : [])
+          .map((p) => (p as { name?: string }).name ?? "")
+          .filter(Boolean)
+          .join(", ");
         break;
       case "formula":
         if (v.formula != null && v.formula.string != null)
@@ -156,7 +244,14 @@ export function buildNotionPropertyUpdate(
           type: "select",
           select: value ? { name: value } : null,
         },
-      }
+      };
+    case "status":
+      return {
+        [propertyName]: {
+          type: "status",
+          status: value ? { name: value } : null,
+        },
+      };
     default:
       return {
         [propertyName]: {

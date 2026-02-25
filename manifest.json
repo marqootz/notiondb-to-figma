@@ -8,7 +8,7 @@
   "main": "dist/code.js",
   "ui": "dist/ui.html",
   "networkAccess": {
-    "allowedDomains": ["https://your-proxy.workers.dev"],
+    "allowedDomains": ["https://*.supabase.co", "https://your-proxy.workers.dev"],
     "reasoning": "Fetches and updates Notion database via CORS proxy. Replace with your deployed proxy domain."
   }
 }

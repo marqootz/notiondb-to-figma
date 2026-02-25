@@ -3,7 +3,6 @@
  * Bundle widget into a single IIFE so Figma's sandbox (no CommonJS) can run it.
  */
 import * as esbuild from "esbuild";
-import { readdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
