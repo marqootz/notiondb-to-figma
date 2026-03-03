@@ -536,7 +536,8 @@ function NotionTableWidget() {
             key={i}
             direction="vertical"
             width={getColumnWidth(col)}
-            height={sz.headerHeight}
+            height="hug-contents"
+            minHeight={sz.headerHeight}
             padding={sz.padding}
             fill="#F5F5F5"
             stroke="#E0E0E0"
@@ -609,12 +610,13 @@ function NotionTableWidget() {
             const hasWrapColumns = displayColumns.some(
               (c) => c.type === "title" || c.type === "date" || c.type === "rich_text"
             );
-            const cellH = hasWrapColumns ? rowH * 2 : rowH;
+            const cellMinH = hasWrapColumns ? rowH * 2 : rowH;
             return (
               <AutoLayout
                 key={colIdx}
                 width={getColumnWidth(col)}
-                height={cellH}
+                height="hug-contents"
+                minHeight={cellMinH}
                 padding={sz.padding}
                 stroke="#EEEEEE"
                 strokeAlign="inside"
@@ -670,7 +672,7 @@ function NotionTableWidget() {
                     fontSize={sz.cellFont}
                     fill={textFill}
                     width="fill-parent"
-                    truncate={hasWrapColumns ? 3 : false}
+                    truncate={false}
                   >
                     {displayValue}
                   </Text>
