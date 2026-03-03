@@ -26,6 +26,7 @@ export function formatCellForDisplay(type: string, value: string): string {
     case "checkbox":
       return /^(1|true|yes)$/i.test(value.trim()) ? "✓" : "—";
     case "date":
+      if (value.includes(" – ")) return value;
       try {
         const d = new Date(value);
         if (!isNaN(d.getTime())) return d.toLocaleDateString();
@@ -70,6 +71,15 @@ import type {
   NotionDatabaseResponse,
 } from "./notion-types";
 
+function formatDatePart(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return !isNaN(d.getTime()) ? d.toLocaleDateString() : iso;
+  } catch {
+    return iso;
+  }
+}
+
 function richTextToStr(richText: NotionRichTextItem[] | undefined): string {
   if (!richText || !Array.isArray(richText)) return "";
   return richText
@@ -99,14 +109,15 @@ export function parseNotionColumns(results: NotionPage[]): ColumnDef[] {
   return columns;
 }
 
-/** Merge select/status options from database schema into columns. */
+/** Merge select/status options from database schema into columns. Keeps column order from page data (parseNotionColumns) since Notion API does not guarantee schema property order. Both select and status support per-option colors from Notion (options have name + color). */
 export function mergeSchemaOptions(
   columns: ColumnDef[],
   schema: NotionDatabaseResponse | null
 ): ColumnDef[] {
   if (!schema?.properties) return columns;
+
   return columns.map((col) => {
-    const prop = schema.properties[col.propertyName];
+    const prop = schema!.properties[col.propertyName];
     if (!prop) return col;
     const opts =
       (col.type === "select" && prop.select?.options) ??
@@ -150,10 +161,17 @@ export function parseNotionProperties(
       case "checkbox":
         cells[key] = v.checkbox ? "Yes" : "No";
         break;
-      case "date":
-        cells[key] =
-          v.date != null && v.date.start != null ? v.date.start : "";
+      case "date": {
+        const d = v.date;
+        if (!d?.start) {
+          cells[key] = "";
+          break;
+        }
+        const start = formatDatePart(d.start);
+        const end = d.end ? formatDatePart(d.end) : null;
+        cells[key] = end ? `${start} – ${end}` : start;
         break;
+      }
       case "url":
         cells[key] = v.url != null ? v.url : "";
         break;
@@ -227,13 +245,26 @@ export function buildNotionPropertyUpdate(
           checkbox: /^(1|true|yes)$/i.test(value.trim()),
         },
       };
-    case "date":
+    case "date": {
+      if (!value) {
+        return { [propertyName]: { type: "date", date: null } };
+      }
+      const toIso = (s: string): string => {
+        const t = s.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+        const d = new Date(t);
+        return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : t;
+      };
+      const rangeMatch = value.split(/\s*–\s*/);
+      const startRaw = rangeMatch[0]?.trim() ?? value;
+      const endRaw = rangeMatch[1]?.trim() || null;
       return {
         [propertyName]: {
           type: "date",
-          date: value ? { start: value, end: null } : null,
+          date: { start: toIso(startRaw), end: endRaw ? toIso(endRaw) : null },
         },
       };
+    }
     case "url":
       return {
         [propertyName]: { type: "url", url: value || null },

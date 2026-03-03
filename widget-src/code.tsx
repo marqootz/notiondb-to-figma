@@ -25,10 +25,68 @@ import {
 } from "./notion-parsers";
 import type { NotionDatabaseQueryResponse, NotionDatabaseResponse } from "./notion-types";
 
-const CELL_WIDTH = 160;
-const HEADER_HEIGHT = 44;
-const ROW_HEIGHT = 32;
-const ROW_HEIGHT_EDIT = 72;
+type TableSize = "small" | "medium" | "large";
+
+const TABLE_SIZES: Record<
+  TableSize,
+  {
+    cellWidth: number;
+    headerHeight: number;
+    rowHeight: number;
+    rowHeightEdit: number;
+    headerFont: number;
+    headerTypeFont: number;
+    cellFont: number;
+    cellPillFont: number;
+    groupFont: number;
+    groupCountFont: number;
+    padding: number;
+    groupPadding: number;
+  }
+> = {
+  small: {
+    cellWidth: 220,
+    headerHeight: 56,
+    rowHeight: 44,
+    rowHeightEdit: 90,
+    headerFont: 22,
+    headerTypeFont: 14,
+    cellFont: 20,
+    cellPillFont: 16,
+    groupFont: 20,
+    groupCountFont: 16,
+    padding: 8,
+    groupPadding: 6,
+  },
+  medium: {
+    cellWidth: 350,
+    headerHeight: 72,
+    rowHeight: 64,
+    rowHeightEdit: 124,
+    headerFont: 34,
+    headerTypeFont: 22,
+    cellFont: 32,
+    cellPillFont: 26,
+    groupFont: 32,
+    groupCountFont: 26,
+    padding: 12,
+    groupPadding: 9,
+  },
+  large: {
+    cellWidth: 500,
+    headerHeight: 96,
+    rowHeight: 88,
+    rowHeightEdit: 160,
+    headerFont: 50,
+    headerTypeFont: 32,
+    cellFont: 48,
+    cellPillFont: 40,
+    groupFont: 48,
+    groupCountFont: 40,
+    padding: 16,
+    groupPadding: 10,
+  },
+};
 
 /** Normalize Notion database ID: strip dashes, extract 32-char hex from URL if pasted. */
 function normalizeDatabaseId(input: string): string {
@@ -58,6 +116,8 @@ function NotionTableWidget() {
   const [filterColumn, setFilterColumn] = useSyncedState("filterColumn", "");
   const [filterOp, setFilterOp] = useSyncedState("filterOp", "contains");
   const [filterValue, setFilterValue] = useSyncedState("filterValue", "");
+  const [tableSize, setTableSize] = useSyncedState<TableSize>("tableSize", "medium");
+  const [columnOrder, setColumnOrder] = useSyncedState("columnOrder", "");
 
   function buildSorts(): { property?: string; timestamp?: string; direction: "ascending" | "descending" }[] {
     if (!sortBy) return [];
@@ -204,8 +264,20 @@ function NotionTableWidget() {
           .map((v) => ({ option: v, label: v })),
       ]
     : [{ option: "", label: "Filter value: (none)" }];
+  const tableSizeOptions = [
+    { option: "small", label: "Size: Small" },
+    { option: "medium", label: "Size: Medium" },
+    { option: "large", label: "Size: Large" },
+  ];
   const menuItems: Parameters<typeof usePropertyMenu>[0] = [
     { itemType: "action", propertyName: "sync", tooltip: "Sync from Notion" },
+    {
+      itemType: "dropdown",
+      propertyName: "tableSize",
+      tooltip: "Table size",
+      selectedOption: tableSizeOptions.some((o) => o.option === tableSize) ? tableSize : "medium",
+      options: tableSizeOptions,
+    },
     { itemType: "separator" },
     {
       itemType: "dropdown",
@@ -250,6 +322,14 @@ function NotionTableWidget() {
   ];
   usePropertyMenu(menuItems, async ({ propertyName, propertyValue }) => {
     if (propertyName === "sync") await fetchFromNotion();
+    else if (propertyName === "tableSize") {
+      const next =
+        propertyValue === "small" || propertyValue === "medium" || propertyValue === "large"
+          ? propertyValue
+          : "medium";
+      setTableSize(next);
+      figma.notify(`Table size: ${next}`);
+    }
     else if (propertyName === "sort") setSortBy(propertyValue ?? "");
     else if (propertyName === "group") setGroupBy(propertyValue ?? "");
     else if (propertyName === "filterColumn") setFilterColumn(propertyValue ?? "");
@@ -353,6 +433,33 @@ function NotionTableWidget() {
   }
 
   const hasData = columns.length > 0 && rows.length >= 0;
+  const sz = TABLE_SIZES[tableSize];
+
+  const getColumnWidth = (col: ColumnDef) =>
+    col.type === "title" || col.type === "date" || col.type === "rich_text"
+      ? Math.round(sz.cellWidth * 1.5)
+      : sz.cellWidth;
+
+  const displayColumns =
+    columnOrder.trim().length > 0
+      ? (() => {
+          const order = columnOrder.split(",").map((s) => s.trim()).filter(Boolean);
+          const byName = new Map(columns.map((c) => [c.name.toLowerCase(), c]));
+          const ordered: ColumnDef[] = [];
+          const used = new Set<ColumnDef>();
+          for (const name of order) {
+            const col = byName.get(name.toLowerCase());
+            if (col && !used.has(col)) {
+              ordered.push(col);
+              used.add(col);
+            }
+          }
+          for (const col of columns) {
+            if (!used.has(col)) ordered.push(col);
+          }
+          return ordered.length > 0 ? ordered : columns;
+        })()
+      : columns;
   const displaySync = lastSynced
     ? new Date(lastSynced).toLocaleString()
     : "Never";
@@ -417,6 +524,7 @@ function NotionTableWidget() {
 
   return (
     <AutoLayout
+      key={tableSize}
       direction="vertical"
       spacing={0}
       cornerRadius={8}
@@ -454,22 +562,22 @@ function NotionTableWidget() {
         </AutoLayout>
       ) : null}
       <AutoLayout direction="horizontal" spacing={0} padding={0}>
-        {columns.map((col, i) => (
+        {displayColumns.map((col, i) => (
           <AutoLayout
             key={i}
             direction="vertical"
-            width={CELL_WIDTH}
-            height={HEADER_HEIGHT}
-            padding={8}
+            width={getColumnWidth(col)}
+            height={sz.headerHeight}
+            padding={sz.padding}
             fill="#F5F5F5"
             stroke="#E0E0E0"
             strokeAlign="inside"
             spacing={2}
           >
-            <Text fontSize={12} fontWeight="bold" fill="#333">
+            <Text fontSize={sz.headerFont} fontWeight="bold" fill="#333" truncate={false} width="fill-parent">
               {col.name}
             </Text>
-            <Text fontSize={9} fill="#888">
+            <Text fontSize={sz.headerTypeFont} fill="#888">
               {NOTION_TYPE_LABELS[col.type] ?? col.type}
             </Text>
           </AutoLayout>
@@ -480,16 +588,16 @@ function NotionTableWidget() {
           {group.groupValue ? (
             <AutoLayout
               direction="horizontal"
-              width={columns.length * CELL_WIDTH}
-              padding={6}
+              width={displayColumns.reduce((s, c) => s + getColumnWidth(c), 0)}
+              padding={sz.groupPadding}
               fill="#E8EAF6"
               stroke="#C5CAE9"
               strokeAlign="inside"
             >
-              <Text fontSize={11} fontWeight="bold" fill="#3949AB">
+              <Text fontSize={sz.groupFont} fontWeight="bold" fill="#3949AB">
                 {group.groupValue}
               </Text>
-              <Text fontSize={10} fill="#5C6BC0">
+              <Text fontSize={sz.groupCountFont} fill="#5C6BC0">
                 {" "}({group.rows.length})
               </Text>
             </AutoLayout>
@@ -502,10 +610,10 @@ function NotionTableWidget() {
                   c.propertyName === editingCell?.property &&
                   (c.type === "select" || c.type === "status")
               );
-            const rowH = rowHasEditingSelect ? ROW_HEIGHT_EDIT : ROW_HEIGHT;
+            const rowH = rowHasEditingSelect ? sz.rowHeightEdit : sz.rowHeight;
             return (
             <AutoLayout key={rowIdx} direction="horizontal" spacing={0}>
-          {columns.map((col, colIdx) => {
+          {displayColumns.map((col, colIdx) => {
             const isEditing =
               editingCell?.pageId === row.pageId && editingCell?.property === col.propertyName;
             const cellValue = row.cells[col.propertyName] ?? "";
@@ -529,12 +637,16 @@ function NotionTableWidget() {
                     : readOnly
                       ? "#757575"
                       : "#333";
+            const hasWrapColumns = displayColumns.some(
+              (c) => c.type === "title" || c.type === "date" || c.type === "rich_text"
+            );
+            const cellH = hasWrapColumns ? rowH * 2 : rowH;
             return (
               <AutoLayout
                 key={colIdx}
-                width={CELL_WIDTH}
-                height={rowH}
-                padding={8}
+                width={getColumnWidth(col)}
+                height={cellH}
+                padding={sz.padding}
                 stroke="#EEEEEE"
                 strokeAlign="inside"
                 fill={cellFill}
@@ -556,7 +668,7 @@ function NotionTableWidget() {
                               stroke={isSelected ? "#9CA3AF" : []}
                               onClick={() => saveCellEdit(opt.name)}
                             >
-                              <Text fontSize={10} fill={c.text}>
+                              <Text fontSize={sz.cellPillFont} fill={c.text}>
                                 {opt.name}
                               </Text>
                             </AutoLayout>
@@ -568,7 +680,7 @@ function NotionTableWidget() {
                       value={typeof editingCell!.value === "string" ? editingCell!.value : null}
                       placeholder={isSelectOrStatus ? "Or type custom value" : "—"}
                       onTextEditEnd={(e) => saveCellEdit(e.characters)}
-                      fontSize={11}
+                      fontSize={sz.cellFont}
                       width="fill-parent"
                       inputBehavior="truncate"
                       inputFrameProps={{ fill: "#FFFFFF", padding: 6 }}
@@ -580,12 +692,17 @@ function NotionTableWidget() {
                     cornerRadius={6}
                     fill={pillColors.bg}
                   >
-                    <Text fontSize={10} fill={pillColors.text}>
+                    <Text fontSize={sz.cellPillFont} fill={pillColors.text}>
                       {displayValue}
                     </Text>
                   </AutoLayout>
                 ) : (
-                  <Text fontSize={11} fill={textFill} width="fill-parent">
+                  <Text
+                    fontSize={sz.cellFont}
+                    fill={textFill}
+                    width="fill-parent"
+                    truncate={hasWrapColumns ? 3 : false}
+                  >
                     {displayValue}
                   </Text>
                 )}
@@ -598,6 +715,19 @@ function NotionTableWidget() {
         </AutoLayout>
       ))}
       <AutoLayout direction="vertical" padding={8} fill="#FAFAFA" spacing={6}>
+        <AutoLayout direction="vertical" spacing={4}>
+          <Text fontSize={9} fill="#666">
+            Column order (comma-separated, e.g. Name, Version, Status):
+          </Text>
+          <Input
+            value={columnOrder || null}
+            placeholder="Leave empty for API order"
+            onTextEditEnd={(e) => setColumnOrder(e.characters)}
+            fontSize={10}
+            width="fill-parent"
+            inputFrameProps={{ fill: "#FFFFFF", padding: 6, cornerRadius: 4 }}
+          />
+        </AutoLayout>
         <Text fontSize={9} fill="#999">
           Last synced: {displaySync}
           {filterColumn ? ` · Showing ${getFilteredRows().length} of ${rows.length}` : ""}

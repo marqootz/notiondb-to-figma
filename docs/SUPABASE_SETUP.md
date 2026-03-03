@@ -2,6 +2,8 @@
 
 Host the Notion CORS proxy on Supabase Edge Functions.
 
+> **Project-specific config:** See [PROJECT_CONFIG.md](./PROJECT_CONFIG.md) for this project's proxy URL and setup.
+
 ## Prerequisites
 
 - [Supabase CLI](https://supabase.com/docs/guides/cli) installed:

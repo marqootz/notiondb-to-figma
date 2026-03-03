@@ -18,7 +18,7 @@ export interface NotionPropertyValue {
   select?: { name: string } | null;
   multi_select?: { name: string }[];
   checkbox?: boolean;
-  date?: { start: string; end: string | null } | null;
+  date?: { start: string; end?: string | null; time_zone?: string | null } | null;
   url?: string | null;
   formula?: { type: string; string?: string; number?: number; boolean?: boolean };
   rollup?: { type: string; array?: unknown[]; number?: number; date?: unknown };
