@@ -113,9 +113,29 @@ function NotionTableWidget() {
   } | null>("editingCell", null);
   const [sortBy, setSortBy] = useSyncedState("sortBy", "");
   const [groupBy, setGroupBy] = useSyncedState("groupBy", "");
-  const [filterColumn, setFilterColumn] = useSyncedState("filterColumn", "");
-  const [filterOp, setFilterOp] = useSyncedState("filterOp", "contains");
-  const [filterValue, setFilterValue] = useSyncedState("filterValue", "");
+  const [filtersConfig, setFiltersConfig] = useSyncedState("filtersConfig", "");
+
+  function parseFilters(): { column: string; op: string; value: string }[] {
+    return filtersConfig
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split("::");
+        const colInput = parts[0]?.trim() ?? "";
+        const op = (parts[1]?.trim() ?? "contains") as "contains" | "equals" | "is_empty" | "is_not_empty";
+        const value = parts[2]?.trim() ?? "";
+        const col = columns.find(
+          (c) =>
+            c.propertyName === colInput ||
+            c.name === colInput ||
+            c.propertyName.toLowerCase() === colInput.toLowerCase() ||
+            c.name.toLowerCase() === colInput.toLowerCase()
+        );
+        return col ? { column: col.propertyName, op, value } : null;
+      })
+      .filter((f): f is { column: string; op: string; value: string } => f !== null);
+  }
   const [tableSize, setTableSize] = useSyncedState<TableSize>("tableSize", "medium");
   const [columnOrder, setColumnOrder] = useSyncedState("columnOrder", "");
 
@@ -238,32 +258,6 @@ function NotionTableWidget() {
     { option: "", label: "Group: None" },
     ...columns.map((c) => ({ option: c.propertyName, label: `By ${c.name}` })),
   ];
-  const filterColumnOptions = [
-    { option: "", label: "Filter: None" },
-    ...columns.map((c) => ({ option: c.propertyName, label: c.name })),
-  ];
-  const filterOpOptions = [
-    { option: "contains", label: "contains" },
-    { option: "equals", label: "equals" },
-    { option: "is_empty", label: "is empty" },
-    { option: "is_not_empty", label: "is not empty" },
-  ];
-  const needsFilterValue = filterColumn && (filterOp === "contains" || filterOp === "equals");
-  const filterValueOptions = needsFilterValue
-    ? [
-        { option: "", label: "Filter value: (none)" },
-        ...Array.from(
-          new Set(
-            rows
-              .map((r) => (r.cells[filterColumn] ?? "").trim())
-              .filter((v) => v && v !== "—")
-          )
-        )
-          .sort((a, b) => a.localeCompare(b))
-          .slice(0, 50)
-          .map((v) => ({ option: v, label: v })),
-      ]
-    : [{ option: "", label: "Filter value: (none)" }];
   const tableSizeOptions = [
     { option: "small", label: "Size: Small" },
     { option: "medium", label: "Size: Medium" },
@@ -294,31 +288,6 @@ function NotionTableWidget() {
       options: groupOptions,
     },
     { itemType: "separator" },
-    {
-      itemType: "dropdown",
-      propertyName: "filterColumn",
-      tooltip: "Filter by column",
-      selectedOption: filterColumnOptions.some((o) => o.option === filterColumn) ? filterColumn : "",
-      options: filterColumnOptions,
-    },
-    {
-      itemType: "dropdown",
-      propertyName: "filterOp",
-      tooltip: "Filter operator",
-      selectedOption: filterOpOptions.some((o) => o.option === filterOp) ? filterOp : "contains",
-      options: filterOpOptions,
-    },
-    ...(needsFilterValue
-      ? [
-          {
-            itemType: "dropdown" as const,
-            propertyName: "filterValue",
-            tooltip: "Filter value",
-            selectedOption: filterValueOptions.some((o) => o.option === filterValue) ? filterValue : "",
-            options: filterValueOptions,
-          },
-        ]
-      : []),
   ];
   usePropertyMenu(menuItems, async ({ propertyName, propertyValue }) => {
     if (propertyName === "sync") await fetchFromNotion();
@@ -332,9 +301,6 @@ function NotionTableWidget() {
     }
     else if (propertyName === "sort") setSortBy(propertyValue ?? "");
     else if (propertyName === "group") setGroupBy(propertyValue ?? "");
-    else if (propertyName === "filterColumn") setFilterColumn(propertyValue ?? "");
-    else if (propertyName === "filterOp") setFilterOp(propertyValue ?? "contains");
-    else if (propertyName === "filterValue") setFilterValue(propertyValue ?? "");
   });
 
   // Load saved config from clientStorage when widget mounts (e.g. after configuring via Plugins → Development)
@@ -353,28 +319,36 @@ function NotionTableWidget() {
   }, []);
 
   function getFilteredRows(): RowData[] {
-    if (!filterColumn || !columns.some((c) => c.propertyName === filterColumn)) {
-      return rows;
-    }
-    const val = filterValue.trim().toLowerCase();
-    const needsValue = filterOp !== "is_empty" && filterOp !== "is_not_empty";
-    if (needsValue && !val) return rows;
+    const filters = parseFilters();
+    if (!filters.length) return rows;
 
     return rows.filter((row) => {
-      const cellVal = (row.cells[filterColumn] ?? "").toLowerCase();
-      const isEmpty = !cellVal || cellVal === "—";
-      switch (filterOp) {
-        case "contains":
-          return cellVal.includes(val);
-        case "equals":
-          return cellVal === val;
-        case "is_empty":
-          return isEmpty;
-        case "is_not_empty":
-          return !isEmpty;
-        default:
-          return true;
+      for (const { column, op, value } of filters) {
+        const val = value.trim().toLowerCase();
+        const needsValue = op !== "is_empty" && op !== "is_not_empty";
+        if (needsValue && !val) continue;
+        const cellVal = (row.cells[column] ?? "").toLowerCase();
+        const isEmpty = !cellVal || cellVal === "—";
+        let pass = false;
+        switch (op) {
+          case "contains":
+            pass = cellVal.includes(val);
+            break;
+          case "equals":
+            pass = cellVal === val;
+            break;
+          case "is_empty":
+            pass = isEmpty;
+            break;
+          case "is_not_empty":
+            pass = !isEmpty;
+            break;
+          default:
+            pass = true;
+        }
+        if (!pass) return false;
       }
+      return true;
     });
   }
 
@@ -538,29 +512,6 @@ function NotionTableWidget() {
           </Text>
         </AutoLayout>
       ) : null}
-      {filterColumn && (filterOp === "contains" || filterOp === "equals") ? (
-        <AutoLayout
-          direction="horizontal"
-          padding={8}
-          fill="#E3F2FD"
-          stroke="#BBDEFB"
-          strokeAlign="inside"
-          spacing={8}
-          verticalAlignItems="center"
-        >
-          <Text fontSize={10} fill="#1565C0">
-            Filter value:
-          </Text>
-          <Input
-            value={filterValue || null}
-            placeholder="Type value to filter..."
-            onTextEditEnd={(e) => setFilterValue(e.characters)}
-            fontSize={11}
-            width={180}
-            inputFrameProps={{ fill: "#FFFFFF", padding: 6, cornerRadius: 4 }}
-          />
-        </AutoLayout>
-      ) : null}
       <AutoLayout direction="horizontal" spacing={0} padding={0}>
         {displayColumns.map((col, i) => (
           <AutoLayout
@@ -717,6 +668,20 @@ function NotionTableWidget() {
       <AutoLayout direction="vertical" padding={8} fill="#FAFAFA" spacing={6}>
         <AutoLayout direction="vertical" spacing={4}>
           <Text fontSize={9} fill="#666">
+            Filters (one per line: Column::op::value). Ops: contains, equals, is_empty, is_not_empty
+          </Text>
+          <Input
+            value={filtersConfig || null}
+            placeholder="e.g. Status::equals::Done"
+            onTextEditEnd={(e) => setFiltersConfig(e.characters)}
+            fontSize={10}
+            width="fill-parent"
+            inputBehavior="multiline"
+            inputFrameProps={{ fill: "#FFFFFF", padding: 6, cornerRadius: 4 }}
+          />
+        </AutoLayout>
+        <AutoLayout direction="vertical" spacing={4}>
+          <Text fontSize={9} fill="#666">
             Column order (comma-separated, e.g. Name, Version, Status):
           </Text>
           <Input
@@ -730,7 +695,7 @@ function NotionTableWidget() {
         </AutoLayout>
         <Text fontSize={9} fill="#999">
           Last synced: {displaySync}
-          {filterColumn ? ` · Showing ${getFilteredRows().length} of ${rows.length}` : ""}
+          {parseFilters().length > 0 ? ` · Showing ${getFilteredRows().length} of ${rows.length}` : ""}
         </Text>
       </AutoLayout>
     </AutoLayout>
