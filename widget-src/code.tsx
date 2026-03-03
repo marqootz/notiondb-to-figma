@@ -138,6 +138,7 @@ function NotionTableWidget() {
   }
   const [tableSize, setTableSize] = useSyncedState<TableSize>("tableSize", "medium");
   const [columnOrder, setColumnOrder] = useSyncedState("columnOrder", "");
+  const [hiddenColumns, setHiddenColumns] = useSyncedState("hiddenColumns", "");
 
   function buildSorts(): { property?: string; timestamp?: string; direction: "ascending" | "descending" }[] {
     if (!sortBy) return [];
@@ -414,7 +415,7 @@ function NotionTableWidget() {
       ? Math.round(sz.cellWidth * 1.5)
       : sz.cellWidth;
 
-  const displayColumns =
+  const orderedColumns =
     columnOrder.trim().length > 0
       ? (() => {
           const order = columnOrder.split(",").map((s) => s.trim()).filter(Boolean);
@@ -434,6 +435,16 @@ function NotionTableWidget() {
           return ordered.length > 0 ? ordered : columns;
         })()
       : columns;
+
+  const hiddenSet = new Set(
+    hiddenColumns
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const displayColumns = orderedColumns.filter(
+    (c) => !hiddenSet.has(c.name.toLowerCase()) && !hiddenSet.has(c.propertyName.toLowerCase())
+  );
   const displaySync = lastSynced
     ? new Date(lastSynced).toLocaleString()
     : "Never";
@@ -688,6 +699,19 @@ function NotionTableWidget() {
             value={columnOrder || null}
             placeholder="Leave empty for API order"
             onTextEditEnd={(e) => setColumnOrder(e.characters)}
+            fontSize={10}
+            width="fill-parent"
+            inputFrameProps={{ fill: "#FFFFFF", padding: 6, cornerRadius: 4 }}
+          />
+        </AutoLayout>
+        <AutoLayout direction="vertical" spacing={4}>
+          <Text fontSize={9} fill="#666">
+            Hidden columns (comma-separated, e.g. Dates, At Issues):
+          </Text>
+          <Input
+            value={hiddenColumns || null}
+            placeholder="Leave empty to show all"
+            onTextEditEnd={(e) => setHiddenColumns(e.characters)}
             fontSize={10}
             width="fill-parent"
             inputFrameProps={{ fill: "#FFFFFF", padding: 6, cornerRadius: 4 }}
